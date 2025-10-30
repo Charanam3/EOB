@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TSP Solver – Slime Mold Algorithm</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    background: #f7f7f7;
+    margin: 0;
+    padding: 1rem;
+  }
+  canvas {
+    border: 2px solid #333;
+    background: white;
+    cursor: crosshair;
+  }
+  button {
+    margin: 0.5rem;
+    padding: 0.5rem 1rem;
+    border: none;
+    background: #4CAF50;
+    color: white;
+    font-size: 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #45a049;
+  }
+  #info {
+    margin-top: 0.8rem;
+    font-size: 1.1rem;
+  }
+</style>
+</head>
+<body>
+<h2>Traveling Salesman Solver – Slime Mold Algorithm</h2>
+
+<canvas id="canvas" width="700" height="450"></canvas>
+<br/>
+<button id="solveBtn">Solve TSP (SMA)</button>
+<button id="clearBtn">Clear</button>
+
+<div id="info">Click on the canvas to add cities.</div>
+
+<script>
+// Canvas setup
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+let cities = [];
+let isDragging = false;
+let dragIndex = -1;
+
+// Add city on click
+canvas.addEventListener("mousedown", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
+  // Check if clicking near an existing city to drag it
+  for (let i = 0; i < cities.length; i++) {
+    const c = cities[i];
+    if (Math.hypot(c.x - x, c.y - y) < 10) {
+      isDragging = true;
+      dragIndex = i;
+      return;
+    }
+  }
+
+  cities.push({ x, y });
+  draw();
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  if (!isDragging) return;
+  const rect = canvas.getBoundingClientRect();
+  cities[dragIndex].x = e.clientX - rect.left;
+  cities[dragIndex].y = e.clientY - rect.top;
+  draw();
+});
+
+canvas.addEventListener("mouseup", () => {
+  isDragging = false;
+  dragIndex = -1;
+});
+
+// Draw cities and connections
+function draw(path = null) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "blue";
+  cities.forEach(c => {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 6, 0, 2 * Math.PI);
+    ctx.fill();
+  });
+
+  if (path) {
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cities[path[0]].x, cities[path[0]].y);
+    for (let i = 1; i < path.length; i++) {
+      ctx.lineTo(cities[path[i]].x, cities[path[i]].y);
+    }
+    ctx.lineTo(cities[path[0]].x, cities[path[0]].y); // Close loop
+    ctx.stroke();
+  }
+}
+
+// Distance helper
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+// Total path length
+function pathLength(path) {
+  let len = 0;
+  for (let i = 0; i < path.length; i++) {
+    let a = cities[path[i]];
+    let b = cities[path[(i + 1) % path.length]];
+    len += distance(a, b);
+  }
+  return len;
+}
+
+// --- Slime Mold Algorithm (simplified metaheuristic) ---
+function slimeMoldTSP(iterations = 500, populationSize = 30) {
+  if (cities.length < 3) return null;
+
+  let n = cities.length;
+  let population = [];
+
+  // Initialize random tours
+  for (let i = 0; i < populationSize; i++) {
+    let path = [...Array(n).keys()];
+    for (let j = n - 1; j > 0; j--) {
+      const r = Math.floor(Math.random() * (j + 1));
+      [path[j], path[r]] = [path[r], path[j]];
+    }
+    population.push({ path, fitness: 1 / pathLength(path) });
+  }
+
+  for (let iter = 0; iter < iterations; iter++) {
+    // Normalize fitness
+    const maxFit = Math.max(...population.map(p => p.fitness));
+    const minFit = Math.min(...population.map(p => p.fitness));
+    const norm = population.map(p => (p.fitness - minFit) / (maxFit - minFit + 1e-6));
+
+    // Compute weights (simulate slime mold behavior)
+    let newPop = [];
+    for (let i = 0; i < populationSize; i++) {
+      let idxA = Math.floor(Math.random() * populationSize);
+      let idxB = Math.floor(Math.random() * populationSize);
+      let parentA = population[idxA].path.slice();
+      let parentB = population[idxB].path.slice();
+
+      // Weighted recombination
+      let offspring = parentA.slice();
+      if (norm[i] > Math.random()) {
+        // Mix with parentB (swap two random positions)
+        const a = Math.floor(Math.random() * n);
+        const b = Math.floor(Math.random() * n);
+        const temp = offspring[a];
+        offspring[a] = offspring[b];
+        offspring[b] = temp;
+      }
+
+      // Small random mutation
+      if (Math.random() < 0.1) {
+        const a = Math.floor(Math.random() * n);
+        const b = Math.floor(Math.random() * n);
+        [offspring[a], offspring[b]] = [offspring[b], offspring[a]];
+      }
+
+      newPop.push({ path: offspring, fitness: 1 / pathLength(offspring) });
+    }
+
+    // Keep best individual
+    population = newPop;
+  }
+
+  // Return best
+  let best = population.reduce((a, b) => (a.fitness > b.fitness ? a : b));
+  return best.path;
+}
+
+// Solve button
+document.getElementById("solveBtn").addEventListener("click", () => {
+  if (cities.length < 3) {
+    alert("Add at least 3 cities.");
+    return;
+  }
+  const bestPath = slimeMoldTSP(400, 25);
+  draw(bestPath);
+  document.getElementById("info").innerText = 
+    "Shortest path length: " + pathLength(bestPath).toFixed(2);
+});
+
+// Clear button
+document.getElementById("clearBtn").addEventListener("click", () => {
+  cities = [];
+  draw();
+  document.getElementById("info").innerText = "Click on the canvas to add cities.";
+});
+</script>
+</body>
+</html>
